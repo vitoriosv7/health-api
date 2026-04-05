@@ -10,28 +10,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd ~/health-api
 
-      - name: Configurar Docker
-        uses: docker/setup-buildx-action@v2
+            echo "Atualizando código..."
+            git pull origin main
 
-      - name: Build da imagem Blue
-        run: docker build -t health-api:blue -f Dockerfile .
+            echo "Build das imagens..."
+            docker build -t health-api:blue .
+            docker build -t health-api:green .
 
-      - name: Build da imagem Green
-        run: docker build -t health-api:green -f Dockerfile .
+            echo "Subindo containers..."
+            docker rm -f health-api-container || true
+            docker rm -f health-api-green || true
 
-      - name: Rodar containers (teste local)
-        run: |
-          docker stop health-api-blue || true
-          docker stop health-api-green || true
-          docker rm health-api-blue || true
-          docker rm health-api-green || true
-          docker run -d --name health-api-blue -p 8001:8000 health-api:blue
-          docker run -d --name health-api-green -p 8002:8000 health-api:green
+            docker run -d -p 8001:8000 --name health-api-container health-api:blue
+            docker run -d -p 8002:8000 --name health-api-green health-api:green
 
-      - name: Alternar Nginx (Blue/Green)
-        run: |
-          chmod +x scripts/switch.sh
-          ./scripts/switch.sh
+            echo "Switch Blue/Green..."
+            chmod +x scripts/switch.sh
+            ./scripts/switch.sh
+
+            echo "Deploy finalizado 🚀"
